@@ -53,6 +53,7 @@ var connectCmd = &cobra.Command{
 		if err == nil {
 			go dhtSvc.ConnectBootstrapNodes(ctx, nil)
 		}
+		_, _ = p2p.InitMDNS(ctx, node.Host)
 
 		protoID := protocol.ToProtocolID(mcpURI.ServiceName)
 

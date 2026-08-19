@@ -68,11 +68,12 @@ var hostCmd = &cobra.Command{
 		}
 		defer node.Close()
 
-		// Init DHT & AutoNAT
+		// Init DHT, AutoNAT & mDNS
 		dhtSvc, err := p2p.InitDHT(ctx, node.Host)
 		if err == nil {
 			go dhtSvc.ConnectBootstrapNodes(ctx, nil)
 		}
+		_, _ = p2p.InitMDNS(ctx, node.Host)
 
 		protoID := protocol.ToProtocolID(hostName)
 
@@ -125,6 +126,8 @@ var hostCmd = &cobra.Command{
 						break
 					}
 				}
+				_ = processIn.Close()
+				_ = tp.Stop()
 				return
 			}
 
