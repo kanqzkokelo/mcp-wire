@@ -1,0 +1,6 @@
+mcp-wire
+*.log
+*.key
+allowed_peers.json
+.mcp-wire/
+client_cfg/
