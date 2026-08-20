@@ -49,3 +49,13 @@ func TestParseURIInvalid(t *testing.T) {
 	_, err = ParseURI("mcp://" + pid.String() + "/invalid@service!")
 	assert.Error(t, err)
 }
+
+func TestRedactURI(t *testing.T) {
+	raw := "mcp://12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq395JTV5V15fs5i4FiE/gpu-whisper?token=secret123"
+	redacted := RedactURI(raw)
+	assert.Contains(t, redacted, "token=%2A%2A%2A")
+	assert.NotContains(t, redacted, "secret123")
+
+	noToken := "mcp://12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq395JTV5V15fs5i4FiE/gpu-whisper"
+	assert.Equal(t, noToken, RedactURI(noToken))
+}

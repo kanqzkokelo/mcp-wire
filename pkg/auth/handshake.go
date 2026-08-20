@@ -45,7 +45,7 @@ func PerformClientHandshake(stream network.Stream, token string, serviceName str
 	}
 
 	reader := bufio.NewReader(stream)
-	respLine, err := reader.ReadBytes('\n')
+	respLine, err := ReadLineBounded(reader, MaxFrameBytes)
 	if err != nil {
 		return fmt.Errorf("failed to read handshake response: %w", err)
 	}
@@ -76,7 +76,7 @@ func PerformHostHandshake(stream network.Stream, expectedToken string, acl *ACLC
 
 	// 2. Read handshake frame
 	reader := bufio.NewReader(stream)
-	reqLine, err := reader.ReadBytes('\n')
+	reqLine, err := ReadLineBounded(reader, MaxFrameBytes)
 	if err != nil {
 		sendAuthResponse(stream, "unauthorized", "failed to read handshake frame")
 		return nil, fmt.Errorf("handshake read failed: %w", err)

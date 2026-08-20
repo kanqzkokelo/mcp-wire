@@ -15,6 +15,24 @@ func TestTokenValidation(t *testing.T) {
 	assert.True(t, ValidateToken("anything", "")) // disabled check
 }
 
+func TestGenerateSecureToken(t *testing.T) {
+	token1, err := GenerateSecureToken(16)
+	require.NoError(t, err)
+	assert.Len(t, token1, 32)
+
+	token2, err := GenerateSecureToken(16)
+	require.NoError(t, err)
+	assert.Len(t, token2, 32)
+	assert.NotEqual(t, token1, token2)
+}
+
+func TestRateLimiter(t *testing.T) {
+	limiter := NewRateLimiter(2.0, 2)
+	assert.True(t, limiter.Allow())
+	assert.True(t, limiter.Allow())
+	assert.False(t, limiter.Allow())
+}
+
 func TestACLConfig(t *testing.T) {
 	priv1, _ := identity.NewEphemeralIdentity()
 	pid1, _ := identity.GetPeerID(priv1)

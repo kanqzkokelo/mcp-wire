@@ -57,19 +57,39 @@ func NewReadOnlyFilterReader(r io.Reader, readOnly bool) *ReadOnlyFilterReader {
 	}
 }
 
+// ReadLineBounded reads a newline-terminated line up to maxBytes without unbounded buffering.
+func ReadLineBounded(r *bufio.Reader, maxBytes int) ([]byte, error) {
+	var line []byte
+	for {
+		segment, isPrefix, err := r.ReadLine()
+		if err != nil {
+			if len(line) > 0 && err == io.EOF {
+				line = append(line, '\n')
+				return line, nil
+			}
+			return nil, err
+		}
+		line = append(line, segment...)
+		if len(line) > maxBytes {
+			return nil, fmt.Errorf("payload size exceeds maximum limit of %d bytes", maxBytes)
+		}
+		if !isPrefix {
+			break
+		}
+	}
+	line = append(line, '\n')
+	return line, nil
+}
+
 // ReadLineAndFilter inspects newline-delimited JSON-RPC requests
 func (f *ReadOnlyFilterReader) ReadLineAndFilter(allowedTarget io.Writer, blockedTarget io.Writer) error {
 	if blockedTarget == nil {
 		blockedTarget = allowedTarget
 	}
 
-	line, err := f.r.ReadBytes('\n')
+	line, err := ReadLineBounded(f.r, MaxFrameBytes)
 	if err != nil {
 		return err
-	}
-
-	if len(line) > MaxFrameBytes {
-		return fmt.Errorf("payload size exceeds maximum limit of 16MB")
 	}
 
 	if !f.readOnly {
@@ -84,33 +104,54 @@ func (f *ReadOnlyFilterReader) ReadLineAndFilter(allowedTarget io.Writer, blocke
 		return err
 	}
 
+	// Try single JSON-RPC request
 	var req JSONRPCRequest
-	if err := json.Unmarshal(trimmed, &req); err != nil || req.Method == "" {
-		// Pass through unparseable or notifications
+	errSingle := json.Unmarshal(trimmed, &req)
+
+	if errSingle == nil && req.Method != "" {
+		if !IsReadOnlyMethodAllowed(req.Method) {
+			return f.respondBlocked(blockedTarget, req.ID, req.Method, fmt.Sprintf("Method '%s' not allowed in read-only mode", req.Method), -32601)
+		}
 		_, err := allowedTarget.Write(line)
 		return err
 	}
 
-	// Check if method is permitted in read-only mode
-	if !allowedReadOnlyMethods[req.Method] {
-		LogSecurityViolation(req.Method)
-		// Return JSON-RPC error response -32601
-		errResp := JSONRPCResponse{
-			JSONRPC: "2.0",
-			ID:      req.ID,
-			Error: &JSONRPCError{
-				Code:    -32601,
-				Message: fmt.Sprintf("Method '%s' not allowed in read-only mode", req.Method),
-			},
+	// Try JSON-RPC batch array request
+	var batch []JSONRPCRequest
+	errBatch := json.Unmarshal(trimmed, &batch)
+
+	if errBatch == nil && len(batch) > 0 {
+		for _, bReq := range batch {
+			if bReq.Method == "" || !IsReadOnlyMethodAllowed(bReq.Method) {
+				method := bReq.Method
+				if method == "" {
+					method = "unknown"
+				}
+				return f.respondBlocked(blockedTarget, bReq.ID, method, fmt.Sprintf("Method '%s' in batch request not allowed in read-only mode", method), -32601)
+			}
 		}
-		data, _ := json.Marshal(errResp)
-		data = append(data, '\n')
-		slog.Warn("blocked mutating request in read-only mode", "method", req.Method)
-		_, err := blockedTarget.Write(data)
+		_, err := allowedTarget.Write(line)
 		return err
 	}
 
-	_, err = allowedTarget.Write(line)
+	// Fail-closed for unparseable or invalid JSON-RPC in read-only mode
+	return f.respondBlocked(blockedTarget, nil, "parse_error", "Invalid or unparseable JSON-RPC request blocked in read-only mode", -32700)
+}
+
+func (f *ReadOnlyFilterReader) respondBlocked(blockedTarget io.Writer, id interface{}, method string, msg string, code int) error {
+	LogSecurityViolation(method)
+	errResp := JSONRPCResponse{
+		JSONRPC: "2.0",
+		ID:      id,
+		Error: &JSONRPCError{
+			Code:    code,
+			Message: msg,
+		},
+	}
+	data, _ := json.Marshal(errResp)
+	data = append(data, '\n')
+	slog.Warn("blocked request in read-only mode", "method", method, "reason", msg)
+	_, err := blockedTarget.Write(data)
 	return err
 }
 

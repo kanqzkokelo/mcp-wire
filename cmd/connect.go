@@ -34,6 +34,9 @@ var connectCmd = &cobra.Command{
 		if token == "" {
 			token = mcpURI.Token
 		}
+		if token == "" {
+			token = os.Getenv("MCP_WIRE_TOKEN")
+		}
 
 		ctx, cancel := config.SetupSignalContext()
 		defer cancel()

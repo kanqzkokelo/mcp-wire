@@ -99,3 +99,20 @@ func BuildURI(peerID peer.ID, serviceName string, token string) string {
 	}
 	return base
 }
+
+// RedactURI replaces secret tokens in connection URIs with '***' for logging/diagnostics.
+func RedactURI(rawURI string) string {
+	if !strings.Contains(rawURI, "token=") {
+		return rawURI
+	}
+	u, err := url.Parse(rawURI)
+	if err != nil {
+		return rawURI
+	}
+	q := u.Query()
+	if q.Get("token") != "" {
+		q.Set("token", "***")
+		u.RawQuery = q.Encode()
+	}
+	return u.String()
+}

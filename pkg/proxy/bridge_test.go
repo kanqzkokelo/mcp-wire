@@ -16,7 +16,16 @@ func TestParseCommandString(t *testing.T) {
 	assert.Equal(t, "python", name)
 	assert.Equal(t, []string{"server.py", "--port", "8080"}, args)
 
+	// Quotes and escaped spaces
+	name, args, err = ParseCommandString(`python -c "import time; print('hello world')" --flag 'value with spaces'`)
+	require.NoError(t, err)
+	assert.Equal(t, "python", name)
+	assert.Equal(t, []string{"-c", "import time; print('hello world')", "--flag", "value with spaces"}, args)
+
 	_, _, err = ParseCommandString("")
+	assert.Error(t, err)
+
+	_, _, err = ParseCommandString(`python -c "unclosed quote`)
 	assert.Error(t, err)
 }
 

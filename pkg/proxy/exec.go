@@ -25,15 +25,65 @@ type TargetProcess struct {
 	doneChan  chan struct{}
 }
 
-// ParseCommandString splits command into binary name and slice of arguments
+// ParseCommandString splits command into binary name and slice of arguments respecting quotes.
 func ParseCommandString(cmdStr string) (string, []string, error) {
 	cmdStr = strings.TrimSpace(cmdStr)
 	if cmdStr == "" {
 		return "", nil, fmt.Errorf("command string cannot be empty")
 	}
 
-	parts := strings.Fields(cmdStr)
-	return parts[0], parts[1:], nil
+	var args []string
+	var current strings.Builder
+	inDouble := false
+	inSingle := false
+	escaped := false
+
+	for _, r := range cmdStr {
+		if escaped {
+			current.WriteRune(r)
+			escaped = false
+			continue
+		}
+
+		if r == '\\' && !inSingle {
+			escaped = true
+			continue
+		}
+
+		if r == '"' && !inSingle {
+			inDouble = !inDouble
+			continue
+		}
+
+		if r == '\'' && !inDouble {
+			inSingle = !inSingle
+			continue
+		}
+
+		if (r == ' ' || r == '\t') && !inDouble && !inSingle {
+			if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+			continue
+		}
+
+		current.WriteRune(r)
+	}
+
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
+	if inDouble || inSingle || escaped {
+		return "", nil, fmt.Errorf("unmatched quote or trailing escape in command string")
+	}
+
+	if len(args) == 0 {
+		return "", nil, fmt.Errorf("command string evaluated to no tokens")
+	}
+
+	return args[0], args[1:], nil
 }
 
 // SpawnTargetProcess executes the remote MCP server command
